@@ -1,0 +1,58 @@
+[package]
+name = "mail-archive"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "migrate"] }
+
+# Auth
+argon2 = "0.5"
+rand = "0.8"
+
+# IMAP
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
+
+# Mail parsing
+mailparse = "0.16"
+
+# Embeddings
+fastembed = "4"
+
+# Language detection
+whatlang = "0.16"
+
+# Cryptography (AEAD encryption for IMAP passwords)
+aes-gcm = "0.10"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Templating (Tera for HTML)
+tera = "1"
+
+# Hashing (SHA-256 for content-addressable storage)
+sha2 = "0.10"
+hex = "0.4"
+
+# HTML stripping
+scraper = "0.22"
+
+# Configuration
+dotenvy = "0.15"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"

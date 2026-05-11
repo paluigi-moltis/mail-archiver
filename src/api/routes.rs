@@ -2,13 +2,15 @@ use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::{header, StatusCode},
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{FromRow, PgPool};
+use tera::Tera;
+use tower_http::services::ServeDir;
 
 use super::auth::login_handler;
 use crate::crypto;
@@ -108,13 +110,15 @@ pub struct TagItem {
 }
 
 /// The shared application state passed to all handlers.
-pub type AppState = (PgPool, String); // (pool, master_key)
+pub type AppState = (PgPool, String, Tera); // (pool, master_key, tera)
 
 // ─── Router ─────────────────────────────────────────────────────────
 
-pub fn build_router(pool: PgPool, master_key: String) -> Router {
+pub fn build_router(pool: PgPool, master_key: String, tera: Tera) -> Router {
     Router::new()
+        .route("/", get(index_page_handler))
         .route("/health", get(health_handler))
+        .route("/stats", get(stats_page_handler))
         .route("/api/auth/login", post(login_handler))
         .route(
             "/api/accounts",
@@ -129,7 +133,8 @@ pub fn build_router(pool: PgPool, master_key: String) -> Router {
         .route("/api/attachments/{hash}", get(attachment_download_handler))
         .route("/api/stats", get(stats_handler))
         .route("/api/tags", get(tags_handler))
-        .with_state((pool, master_key))
+        .nest_service("/static", ServeDir::new("static"))
+        .with_state((pool, master_key, tera))
 }
 
 // ─── Health ─────────────────────────────────────────────────────────
@@ -141,11 +146,37 @@ async fn health_handler() -> Json<Value> {
     }))
 }
 
+// ─── Page handlers (Tera HTML) ──────────────────────────────────────
+
+async fn index_page_handler(State((_pool, _key, tera)): State<AppState>) -> impl IntoResponse {
+    let ctx = tera::Context::new();
+    match tera.render("search.html", &ctx) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Template error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+async fn stats_page_handler(State((_pool, _key, tera)): State<AppState>) -> impl IntoResponse {
+    let ctx = tera::Context::new();
+    match tera.render("stats.html", &ctx) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Template error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 // ─── Account CRUD ───────────────────────────────────────────────────
 
 /// POST /api/accounts — create a new IMAP account.
 pub async fn create_account_handler(
-    State((pool, master_key)): State<AppState>,
+    State((pool, master_key, _tera)): State<AppState>,
     Json(req): Json<CreateAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let (encrypted_password, encryption_nonce) = crypto::encrypt(&master_key, &req.password)
@@ -182,7 +213,7 @@ pub async fn create_account_handler(
 
 /// GET /api/accounts — list all accounts.
 pub async fn list_accounts_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let rows: Vec<AccountResponse> = sqlx::query_as(
         r#"SELECT id, email_address, label, imap_server, imap_port, use_tls,
@@ -198,7 +229,7 @@ pub async fn list_accounts_handler(
 
 /// DELETE /api/accounts/:id — delete an account and all its emails.
 pub async fn delete_account_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let result = sqlx::query("DELETE FROM mail_accounts WHERE id = $1")
@@ -218,7 +249,7 @@ pub async fn delete_account_handler(
 
 /// GET /api/settings — get current application settings.
 pub async fn get_settings_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let row: SettingsResponse = sqlx::query_as(
         r#"SELECT id, max_parallelism, default_sync_interval_seconds
@@ -233,7 +264,7 @@ pub async fn get_settings_handler(
 
 /// PUT /api/settings — update application settings.
 pub async fn update_settings_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     if let Some(max) = req.max_parallelism {
@@ -258,7 +289,7 @@ pub async fn update_settings_handler(
 
 /// GET /api/search — full-text search with tag filtering and pagination.
 pub async fn search_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let page = params.page.unwrap_or(1).max(1);
@@ -429,7 +460,7 @@ pub async fn search_handler(
 
 /// GET /api/attachments/:hash — stream an attachment file from disk.
 pub async fn attachment_download_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "./data".to_string());
@@ -485,7 +516,7 @@ pub async fn attachment_download_handler(
 
 /// GET /api/stats — return archive statistics.
 pub async fn stats_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let total_emails: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM emails")
         .fetch_one(&pool)
@@ -520,7 +551,7 @@ pub async fn stats_handler(
 
 /// GET /api/tags — list all tags with usage counts.
 pub async fn tags_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let tags: Vec<TagItem> = sqlx::query_as(
         r#"SELECT t.id, t.name, t.is_auto,

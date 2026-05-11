@@ -1,0 +1,10 @@
+target/
+.git/
+.github/
+*.rs.bk
+docs/
+.env
+.env.*
+data/
+.idea/
+.vscode/

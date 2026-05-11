@@ -41,10 +41,10 @@ pub fn generate_session_token() -> String {
 }
 
 /// Application state type — must match routes.rs
-pub type AppState = (PgPool, String);
+pub type AppState = (PgPool, String, tera::Tera);
 
 pub async fn login_handler(
-    State((pool, _master_key)): State<AppState>,
+    State((pool, _master_key, _tera)): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // For MVP: username is always "admin", password is checked against settings table

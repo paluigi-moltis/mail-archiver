@@ -11,6 +11,7 @@ use anyhow::Result;
 use config::AppConfig;
 use embed::Embedder;
 use std::sync::Arc;
+use tera::Tera;
 use tokio::sync::RwLock;
 
 #[tokio::main]
@@ -42,7 +43,15 @@ async fn main() -> Result<()> {
     });
 
     // Build and run server
-    let app = api::routes::build_router(pool, config.archive_master_key);
+    let tera = match Tera::new("templates/**/*") {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Template parsing error(s): {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let app = api::routes::build_router(pool, config.archive_master_key, tera);
     let addr = format!("{}:{}", config.host, config.port);
     println!("Server listening on {}", addr);
 

@@ -40,8 +40,11 @@ pub fn generate_session_token() -> String {
     hex::encode(buf)
 }
 
+/// Application state type — must match routes.rs
+pub type AppState = (PgPool, String);
+
 pub async fn login_handler(
-    State(pool): State<PgPool>,
+    State((pool, _master_key)): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // For MVP: username is always "admin", password is checked against settings table
@@ -59,8 +62,8 @@ pub async fn login_handler(
         None => return Err((StatusCode::UNAUTHORIZED, "Admin not configured".to_string())),
     };
 
-    // Check if this is the default "change_me" hash — if so, accept any password and auto-set it
-    if stored_hash.contains("change_me") {
+    // Check if this is the default placeholder — if so, accept any password and auto-set it
+    if stored_hash == "not_yet_configured" {
         // First login: set the password to what the user provided
         let new_hash = hash_password(&req.password)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

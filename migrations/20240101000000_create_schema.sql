@@ -5,7 +5,7 @@ CREATE TABLE settings (
     id INT PRIMARY KEY DEFAULT 1,
     max_parallelism INT NOT NULL DEFAULT 4,
     default_sync_interval_seconds INT NOT NULL DEFAULT 300,
-    password_hash VARCHAR NOT NULL DEFAULT '$argon2id$v=19$m=19456,t=2,p=1$change_me'
+    password_hash VARCHAR NOT NULL DEFAULT 'not_yet_configured'
 );
 
 -- Enforce single row

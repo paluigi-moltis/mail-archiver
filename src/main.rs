@@ -33,8 +33,16 @@ async fn main() -> Result<()> {
     // Create data directories
     std::fs::create_dir_all(format!("{}/attachments", config.data_dir))?;
 
-    // Build and run the server
-    let app = api::routes::build_router(pool);
+    // Spawn sync loop as background task
+    let sync_pool = pool.clone();
+    let sync_config = config.clone();
+    let sync_key = config.archive_master_key.clone();
+    tokio::spawn(async move {
+        imap::sync_engine::run_sync_loop(sync_pool, sync_config, sync_key).await;
+    });
+
+    // Build and run server
+    let app = api::routes::build_router(pool, config.archive_master_key);
     let addr = format!("{}:{}", config.host, config.port);
     println!("Server listening on {}", addr);
 

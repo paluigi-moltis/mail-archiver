@@ -1,0 +1,23 @@
+/* Mail Archive — custom styles */
+/* Most styling is done via Bootstrap 5 CDN + inline in templates */
+/* This file is for any additional custom styles */
+
+.email-card {
+    border-left: 4px solid #dee2e6;
+    padding-left: 1rem;
+}
+
+.email-card:hover {
+    border-left-color: #0d6efd;
+}
+
+.snippet {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.navbar-brand {
+    font-weight: 600;
+}

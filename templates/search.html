@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Search — Mail Archive{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <h2 class="mb-4">Search Emails</h2>
+        
+        <form class="mb-4" hx-get="/api/search" hx-target="#search-results" hx-trigger="submit" hx-indicator="#search-spinner">
+            <div class="input-group input-group-lg">
+                <input type="text" name="q" class="form-control search-input" placeholder="Search emails..." id="search-input" required>
+                <input type="hidden" name="page" value="1" id="search-page">
+                <button class="btn btn-primary" type="submit" id="search-btn">
+                    <span class="spinner-border spinner-border-sm d-none" id="search-spinner" role="status"></span>
+                    Search
+                </button>
+            </div>
+        </form>
+
+        <div id="search-info" class="mb-2 text-muted d-none">
+            <span id="result-count"></span>
+        </div>
+
+        <div id="search-results">
+            <div class="text-center text-muted py-5">
+                <p class="fs-4">Enter a search query to find emails</p>
+            </div>
+        </div>
+
+        <div id="pagination" class="d-none mt-3">
+            <nav>
+                <ul class="pagination justify-content-center">
+                    <li class="page-item" id="prev-page">
+                        <a class="page-link" href="#" onclick="goToPage(currentPage - 1)">Previous</a>
+                    </li>
+                    <li class="page-item active" id="current-page-display">
+                        <span class="page-link">Page <span id="page-number">1</span></span>
+                    </li>
+                    <li class="page-item" id="next-page">
+                        <a class="page-link" href="#" onclick="goToPage(currentPage + 1)">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let currentQuery = '';
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Override htmx to handle pagination
+    document.body.addEventListener('htmx:afterSwap', (event) => {
+        if (event.detail.target.id === 'search-results') {
+            const data = event.detail.xhr.response;
+            try {
+                const json = JSON.parse(data);
+                renderResults(json);
+            } catch(e) {
+                console.error('Failed to parse search results', e);
+            }
+        }
+    });
+});
+
+// Override form submission to use JSON rendering
+document.querySelector('form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    currentPage = 1;
+    currentQuery = document.getElementById('search-input').value;
+    doSearch();
+});
+
+function goToPage(page) {
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    doSearch();
+}
+
+async function doSearch() {
+    const spinner = document.getElementById('search-spinner');
+    spinner.classList.remove('d-none');
+    
+    document.getElementById('search-page').value = currentPage;
+    
+    try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(currentQuery)}&page=${currentPage}&per_page=20`);
+        const data = await response.json();
+        renderResults(data);
+    } catch(e) {
+        console.error('Search failed', e);
+        document.getElementById('search-results').innerHTML = '<div class="alert alert-danger">Search failed. Please try again.</div>';
+    } finally {
+        spinner.classList.add('d-none');
+    }
+}
+
+function renderResults(data) {
+    const container = document.getElementById('search-results');
+    const results = data.results || [];
+    totalPages = data.total_pages || 1;
+    
+    document.getElementById('result-count').textContent = `${data.total} result(s) found`;
+    document.getElementById('search-info').classList.toggle('d-none', results.length === 0);
+    
+    if (results.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-5"><p class="fs-4">No results found</p></div>';
+        document.getElementById('pagination').classList.add('d-none');
+        return;
+    }
+    
+    let html = '<div class="list-group">';
+    results.forEach(email => {
+        const date = email.received_at ? new Date(email.received_at).toLocaleDateString() : '';
+        const snippet = email.body_snippet || '';
+        const tags = (email.tags || []).map(t => 
+            `<span class="badge ${getTagClass(t)} me-1">${escapeHtml(t)}</span>`
+        ).join('');
+        const attachBadge = email.has_attachment 
+            ? '<span class="badge bg-success me-1">📎 Attachment</span>' 
+            : '';
+        
+        html += `
+            <div class="list-group-item email-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${escapeHtml(email.subject || '(no subject)')}</h6>
+                        <small class="text-muted">${escapeHtml(email.sender)}</small>
+                        <small class="text-muted ms-2">${date}</small>
+                    </div>
+                    <small class="text-muted">${email.score.toFixed(3)}</small>
+                </div>
+                <p class="snippet mb-1 mt-1">${escapeHtml(snippet)}</p>
+                <div>${tags}${attachBadge}</div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    // Update pagination
+    document.getElementById('pagination').classList.remove('d-none');
+    document.getElementById('page-number').textContent = currentPage;
+    document.getElementById('prev-page').classList.toggle('disabled', currentPage <= 1);
+    document.getElementById('next-page').classList.toggle('disabled', currentPage >= totalPages);
+}
+
+function getTagClass(tag) {
+    if (tag.startsWith('folder:')) return 'badge-folder';
+    if (tag.startsWith('from:')) return 'badge-from';
+    if (tag === 'has:attachment') return 'badge-attachment';
+    return 'bg-secondary';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

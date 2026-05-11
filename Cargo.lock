@@ -2050,6 +2050,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "tower",
  "tower-http",
  "webpki-roots 0.26.11",

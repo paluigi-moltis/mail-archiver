@@ -82,3 +82,5 @@ CREATE TABLE sync_errors (
 );
 
 CREATE INDEX idx_sync_errors_account ON sync_errors(account_id);
+
+INSERT INTO settings (id) VALUES (1) ON CONFLICT DO NOTHING;

@@ -127,7 +127,8 @@ fn strip_html(html: &str) -> String {
     let document = Html::parse_document(html);
 
     // Collect all text, skipping script/style elements
-    let selector = Selector::parse("script, style").unwrap();
+    let selector =
+        Selector::parse("script, style").expect("hardcoded selector should always parse");
     let skip_nodes: std::collections::HashSet<_> = document
         .select(&selector)
         .flat_map(|el| el.descendants().map(|n| n.id()))

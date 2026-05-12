@@ -93,24 +93,20 @@ pub async fn process_and_store_email(
         );
 
         sqlx::query(
-            &format!(
-                "UPDATE emails SET search_vector = $1::vector, fts_doc = to_tsvector('{}', $2) WHERE id = $3",
-                ts_config
-            ),
+            "UPDATE emails SET search_vector = $1::vector, fts_doc = to_tsvector($2, $3) WHERE id = $4",
         )
         .bind(&vector_str)
+        .bind(ts_config)
         .bind(&fts_input)
         .bind(email_id)
         .execute(pool)
         .await?;
     } else {
         // Just FTS, no vector
-        sqlx::query(&format!(
-            "UPDATE emails SET fts_doc = to_tsvector('{}', $1) WHERE id = $2",
-            ts_config
-        ))
-        .bind(&fts_input)
-        .bind(email_id)
+        sqlx::query("UPDATE emails SET fts_doc = to_tsvector($1, $2) WHERE id = $3")
+            .bind(ts_config)
+            .bind(&fts_input)
+            .bind(email_id)
         .execute(pool)
         .await?;
     }

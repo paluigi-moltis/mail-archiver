@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
     // Initialize embedder (downloads model on first run)
     println!("Loading embedding model (downloads on first run, ~90MB)...");
     let embeddings = embed::init_embedder().await?;
-    let _embedder: Embedder = Arc::new(RwLock::new(Some(embeddings)));
+    let embedder: Embedder = Arc::new(RwLock::new(Some(embeddings)));
     println!("Embedding model loaded.");
 
     // Create data directories
@@ -38,8 +38,10 @@ async fn main() -> Result<()> {
     let sync_pool = pool.clone();
     let sync_config = config.clone();
     let sync_key = config.archive_master_key.clone();
+    let sync_embedder = embedder.clone();
+    let sync_data_dir = config.data_dir.clone();
     tokio::spawn(async move {
-        imap::sync_engine::run_sync_loop(sync_pool, sync_config, sync_key).await;
+        imap::sync_engine::run_sync_loop(sync_pool, sync_config, sync_key, sync_embedder, sync_data_dir).await;
     });
 
     // Build and run server

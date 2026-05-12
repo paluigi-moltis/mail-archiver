@@ -51,6 +51,8 @@ pub async fn sync_account(
     pool: &PgPool,
     master_key: &str,
     semaphore: &Semaphore,
+    embedder: &crate::embed::Embedder,
+    data_dir: &str,
 ) -> Result<()> {
     let _permit = semaphore
         .acquire()
@@ -105,7 +107,7 @@ pub async fn sync_account(
             continue;
         }
 
-        if let Err(e) = sync_folder(&mut client, account, folder, pool).await {
+        if let Err(e) = sync_folder(&mut client, account, folder, pool, embedder, data_dir, master_key).await {
             eprintln!(
                 "Error syncing folder '{}' for account {}: {}",
                 folder, account.email_address, e
@@ -139,6 +141,9 @@ async fn sync_folder(
     account: &MailAccount,
     folder: &str,
     pool: &PgPool,
+    embedder: &crate::embed::Embedder,
+    data_dir: &str,
+    master_key: &str,
 ) -> Result<()> {
     let (server_uidvalidity, _exists) = client
         .select_mailbox(folder)
@@ -203,7 +208,9 @@ async fn sync_folder(
     for uid in &new_uids {
         match client.uid_fetch_raw(*uid).await {
             Ok(raw_email) => {
-                if let Err(e) = store_raw_email(pool, account.id, *uid, folder, &raw_email).await {
+                if let Err(e) = crate::storage::process_and_store_email(
+                    pool, account.id, *uid, folder, &raw_email, embedder, master_key, data_dir,
+                ).await {
                     eprintln!(
                         "Error storing UID {} from {}: {}",
                         uid, account.email_address, e
@@ -223,32 +230,6 @@ async fn sync_folder(
     if account.grace_period_days > 0 {
         grace_period_delete(pool, account, folder, &server_uids).await?;
     }
-
-    Ok(())
-}
-
-/// Insert a raw email into the database (minimal placeholder — Phase 4 will expand).
-async fn store_raw_email(
-    pool: &PgPool,
-    account_id: i32,
-    imap_uid: i64,
-    folder: &str,
-    _raw_email: &[u8],
-) -> Result<()> {
-    // Minimal insertion — Phase 4 will expand with full parsing, embedding, tagging
-    let message_id = format!("temp-{}-{}", account_id, imap_uid);
-
-    sqlx::query(
-        "INSERT INTO emails (account_id, imap_uid, folder, message_id, body_text) VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(account_id)
-    .bind(imap_uid)
-    .bind(folder)
-    .bind(&message_id)
-    .bind("Not yet parsed")
-    .execute(pool)
-    .await
-    .map_err(|e| anyhow!("DB insert error for UID {imap_uid}: {e}"))?;
 
     Ok(())
 }
@@ -298,7 +279,7 @@ async fn grace_period_delete(
 
 /// Main sync loop — runs periodically in the background.
 /// This function never returns (it loops forever).
-pub async fn run_sync_loop(pool: PgPool, _config: AppConfig, master_key: String) {
+pub async fn run_sync_loop(pool: PgPool, _config: AppConfig, master_key: String, embedder: crate::embed::Embedder, data_dir: String) {
     let interval_secs = {
         let row: Option<(i32,)> =
             sqlx::query_as("SELECT default_sync_interval_seconds FROM settings WHERE id = 1")
@@ -344,9 +325,11 @@ pub async fn run_sync_loop(pool: PgPool, _config: AppConfig, master_key: String)
             let master_key = master_key.clone();
             let semaphore = semaphore.clone();
             let account = account.clone();
+            let embedder = embedder.clone();
+            let data_dir = data_dir.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = sync_account(&account, &pool, &master_key, &semaphore).await {
+                if let Err(e) = sync_account(&account, &pool, &master_key, &semaphore, &embedder, &data_dir).await {
                     eprintln!("Sync error for {}: {}", account.email_address, e);
                 }
             });

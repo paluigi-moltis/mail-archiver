@@ -1,6 +1,7 @@
 use anyhow::Result;
 use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -14,6 +15,12 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
 }
 
 pub fn hash_password(password: &str) -> Result<String> {
@@ -31,13 +38,6 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok())
-}
-
-/// Simple token generation (random hex token for session)
-pub fn generate_session_token() -> String {
-    let mut buf = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut buf);
-    hex::encode(buf)
 }
 
 /// Application state type — must match routes.rs
@@ -78,6 +78,23 @@ pub async fn login_handler(
         return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
     }
 
-    let token = generate_session_token();
+    // Generate JWT token
+    let jwt_secret =
+        std::env::var("JWT_SECRET").map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "JWT_SECRET not configured".to_string()))?;
+    let expiration = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::hours(24))
+        .expect("valid timestamp")
+        .timestamp() as usize;
+    let claims = Claims {
+        sub: req.username.clone(),
+        exp: expiration,
+    };
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     Ok(Json(LoginResponse { token }))
 }

@@ -51,7 +51,9 @@ async fn main() -> Result<()> {
         }
     };
 
-    let app = api::routes::build_router(pool, config.archive_master_key, tera);
+    let app = api::routes::build_router(pool, config.archive_master_key, tera)
+        .layer(axum::middleware::from_fn(api::auth_middleware::auth_middleware))
+        .layer(axum::Extension(config.jwt_secret.clone()));
     let addr = format!("{}:{}", config.host, config.port);
     println!("Server listening on {}", addr);
 
